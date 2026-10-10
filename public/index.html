@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FTV Vienna · Footvolley Wien</title>
+  <meta name="description" content="FTV Vienna – Footvolley in Wien. Trainings online buchen, jeden Sonntag King & Queen of the Week, Rangliste, Turniere und News.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <span class="eyebrow">Footvolley Wien</span>
+          <h1>Keine Hände.<br><span>Nur Sand.</span></h1>
+          <p class="lead">FTV Vienna ist die Footvolley-Community in Wien. Wir trainieren unter der Woche und spielen jeden Sonntag um die Krone: <strong>King &amp; Queen of the Week</strong>.</p>
+          <div class="hero-cta">
+            <a class="btn" href="/trainings">Training buchen</a>
+            <a class="btn btn--ghost" href="/rangliste">Zur Rangliste</a>
+          </div>
+          <div class="hero-stats">
+            <div><strong id="stat-trainings">–</strong><span>Termine geplant</span></div>
+            <div><strong id="stat-players">–</strong><span>Spieler:innen im Ranking</span></div>
+            <div><strong>So</strong><span>King &amp; Queen Day</span></div>
+          </div>
+        </div>
+        <div class="hero-art"><img class="ball" src="/img/ball.svg" alt=""></div>
+      </div>
+    </section>
+
+    <section class="section--tight" style="padding-top:0">
+      <div class="wrap split">
+        <article class="panel panel--training">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Unter der Woche</span>
+              <h2>Training buchen</h2>
+              <p class="muted mt-0">Platz sichern in zwei Klicks – für Einsteiger:innen und Fortgeschrittene.</p>
+            </div>
+            <div class="panel-icon" id="ic-training"></div>
+          </div>
+          <div class="event-list" id="home-trainings"></div>
+          <div class="panel-foot"><a class="btn btn--ghost" href="/trainings">Alle Trainings</a></div>
+        </article>
+
+        <article class="panel panel--kotw">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Jeden Sonntag</span>
+              <h2>King &amp; Queen of the Week</h2>
+              <p class="muted mt-0">Teams werden jede Runde neu gemischt – am Ende zählt nur, wer am öftesten gewinnt.</p>
+            </div>
+            <div class="panel-icon" id="ic-crown"></div>
+          </div>
+          <div class="event-list" id="home-kotw"></div>
+          <div class="mini-board" id="home-board"></div>
+          <div class="panel-foot">
+            <a class="btn btn--sand" href="/rangliste">Rangliste ansehen</a>
+            <a class="btn btn--ghost" href="/king-queen">So funktioniert's</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div><span class="eyebrow">Unser Sport</span><h2>Footvolley in 30 Sekunden</h2></div>
+        </div>
+        <div class="features">
+          <div class="feature"><div class="num">01</div><h3>Beachvolleyball-Feld</h3><p>Gespielt wird im Sand über ein Netz – klassisch 2 gegen 2, maximal drei Ballkontakte pro Team.</p></div>
+          <div class="feature"><div class="num">02</div><h3>Fußball-Technik</h3><p>Fuß, Oberschenkel, Brust, Kopf und Schulter – alles erlaubt, nur keine Hände. Erfunden 1965 in Rio.</p></div>
+          <div class="feature"><div class="num">03</div><h3>Community</h3><p>Egal ob Ex-Kicker:in oder Beach-Neuling: Bei den Basics-Trainings lernst du alles von Grund auf.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head">
+          <div><span class="eyebrow">Infoblog</span><h2>Neuigkeiten</h2></div>
+          <a class="btn btn--ghost btn--sm" href="/blog">Alle Beiträge</a>
+        </div>
+        <div class="posts" id="home-posts"></div>
+      </div>
+    </section>
+
+    <section class="section sand-band">
+      <div class="wrap cta-row">
+        <div>
+          <span class="eyebrow">Folge uns</span>
+          <h2>Highlights, Shark Attacks &amp; Termine auf Instagram</h2>
+          <p class="muted mt-0">Clips vom Sonntag, Turnier-News und spontane Sessions – zuerst auf Instagram.</p>
+        </div>
+        <a class="btn ig-gradient" id="ig-cta" target="_blank" rel="noopener">Instagram öffnen</a>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (async function () {
+    const { api, esc, eventItem, remember, bindRegisterButtons, skeleton, ICONS, fmt } = FTVApp;
+    document.getElementById('ic-training').innerHTML = ICONS.whistle;
+    document.getElementById('ic-crown').innerHTML = ICONS.crown;
+    const ig = document.getElementById('ig-cta');
+    ig.href = FTV.instagram || FTV.instagramAustria;
+    ig.insertAdjacentHTML('afterbegin', ICONS.instagram);
+
+    const tEl = document.getElementById('home-trainings');
+    const kEl = document.getElementById('home-kotw');
+    tEl.innerHTML = skeleton(3);
+    kEl.innerHTML = skeleton(1);
+
+    async function loadEvents() {
+      try {
+        const [trainings, sundays] = await Promise.all([
+          api('/api/events?type=training&when=upcoming&limit=3'),
+          api('/api/events?type=kotw&when=upcoming&limit=1'),
+        ]);
+        remember(trainings); remember(sundays);
+        tEl.innerHTML = trainings.length ? trainings.map(eventItem).join('') : '<div class="empty">Aktuell sind keine Trainings geplant – schau bald wieder vorbei.</div>';
+        kEl.innerHTML = sundays.length ? sundays.map(eventItem).join('') : '<div class="empty">Der nächste Sonntag wird bald eingetragen.</div>';
+      } catch (e) {
+        tEl.innerHTML = kEl.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`;
+      }
+    }
+    bindRegisterButtons(document.querySelector('.split'), loadEvents);
+    loadEvents();
+
+    api('/api/events?when=upcoming&limit=200').then((all) => { document.getElementById('stat-trainings').textContent = all.length; }).catch(() => {});
+
+    api('/api/leaderboard').then((lb) => {
+      const players = new Set([...lb.king, ...lb.queen].map((p) => p.player.toLowerCase()));
+      document.getElementById('stat-players').textContent = players.size;
+      const list = (rows) => rows.length
+        ? `<ol>${rows.slice(0, 3).map((p) => `<li><span class="medal medal--${p.rank}">${p.rank}</span>${esc(p.player)}<span class="pts">${p.points}</span></li>`).join('')}</ol>`
+        : '<p class="muted" style="font-size:.9rem">Noch keine Ergebnisse.</p>';
+      document.getElementById('home-board').innerHTML = `
+        <div><h4>👑 Kings ${esc(lb.season)}</h4>${list(lb.king)}</div>
+        <div><h4>👸 Queens ${esc(lb.season)}</h4>${list(lb.queen)}</div>`;
+    }).catch(() => {});
+
+    api('/api/posts?limit=3').then((posts) => {
+      document.getElementById('home-posts').innerHTML = posts.length ? posts.map((p) => `
+        <a class="post-card" href="/beitrag?id=${p.id}">
+          <div class="meta"><span class="tag">${esc(p.tag)}</span><span>${fmt.date(p.published_at.replace(' ', 'T'))}</span></div>
+          <h3>${esc(p.title)}</h3><p>${esc(p.excerpt)}</p><span class="more">Weiterlesen →</span>
+        </a>`).join('') : '<div class="empty">Noch keine Beiträge.</div>';
+    }).catch(() => {});
+  })();
+  </script>
+</body>
+</html>

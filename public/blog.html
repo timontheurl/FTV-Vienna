@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blog · FTV Vienna</title>
+  <meta name="description" content="News und Infos rund um FTV Vienna und Footvolley in Wien.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Infoblog</span>
+        <h1>News aus dem Sand</h1>
+        <p>Vereinsinfos, Trainingsänderungen, Turnierberichte und alles, was ihr über Footvolley in Wien wissen müsst.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="toolbar"><div class="tabs" id="tags"></div></div>
+        <div class="posts" id="posts"></div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, fmt, skeleton } = FTVApp;
+    const el = document.getElementById('posts');
+    const tagsEl = document.getElementById('tags');
+    el.innerHTML = skeleton(3);
+    let all = [];
+    let tag = '';
+    function render() {
+      const list = tag ? all.filter((p) => p.tag === tag) : all;
+      el.innerHTML = list.length ? list.map((p) => `
+        <a class="post-card" href="/beitrag?id=${p.id}">
+          <div class="meta"><span class="tag">${esc(p.tag)}</span><span>${fmt.date(p.published_at.replace(' ', 'T'))}</span></div>
+          <h3>${esc(p.title)}</h3><p>${esc(p.excerpt)}</p><span class="more">Weiterlesen →</span>
+        </a>`).join('') : '<div class="empty" style="grid-column:1/-1">Noch keine Beiträge.</div>';
+      tagsEl.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.tag === tag));
+    }
+    api('/api/posts').then((posts) => {
+      all = posts;
+      const tags = [...new Set(posts.map((p) => p.tag))];
+      tagsEl.innerHTML = `<button data-tag="">Alle</button>` + tags.map((t) => `<button data-tag="${esc(t)}">${esc(t)}</button>`).join('');
+      if (tags.length < 2) tagsEl.classList.add('hidden');
+      render();
+    }).catch((e) => { el.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`; });
+    tagsEl.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (b) { tag = b.dataset.tag; render(); }
+    });
+  })();
+  </script>
+</body>
+</html>

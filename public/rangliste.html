@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rangliste · FTV Vienna</title>
+  <meta name="description" content="Saison-Rangliste von King & Queen of the Week bei FTV Vienna.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero" style="background:radial-gradient(900px 400px at 90% -20%, rgba(255,207,74,.28), transparent 60%), var(--navy-900)">
+      <div class="wrap">
+        <span class="eyebrow" style="color:var(--gold)">King &amp; Queen of the Week</span>
+        <h1>Rangliste <span id="season-title" style="color:var(--sand)"></span></h1>
+        <p id="season-sub">Alle Punkte aus den Sonntagen der Saison.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="toolbar">
+          <div class="tabs" id="cat">
+            <button class="active" data-cat="king">👑 Kings</button>
+            <button data-cat="queen">👸 Queens</button>
+          </div>
+          <label style="flex-direction:row;align-items:center;gap:10px">Saison
+            <select id="season" style="width:auto"></select>
+          </label>
+        </div>
+        <div class="podium" id="podium"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th class="num">#</th><th>Spieler:in</th><th class="num">Punkte</th><th class="num">Sonntage</th><th class="num">Siege</th><th class="num">Podest</th><th class="num">Ø Punkte</th><th>Letzte Platzierungen</th></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top:16px;font-size:.88rem" id="legend"></p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, ICONS } = FTVApp;
+    const params = new URLSearchParams(location.search);
+    let cat = params.get('kategorie') === 'queen' ? 'queen' : 'king';
+    let data = null;
+
+    function render() {
+      document.querySelectorAll('#cat button').forEach((b) => b.classList.toggle('active', b.dataset.cat === cat));
+      const rows = data[cat];
+      const spot = (p, place) => p ? `
+        <div class="podium-spot podium-spot--${place}">
+          <div class="crown">${ICONS.crown}</div>
+          <div class="name">${esc(p.player)}</div>
+          <div class="pts">${p.points} Punkte</div>
+          <div class="sub">${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.played} So</div>
+          <span class="place">${p.rank}</span>
+        </div>` : '<div></div>';
+      document.getElementById('podium').innerHTML = rows.length ? spot(rows[1], 2) + spot(rows[0], 1) + spot(rows[2], 3) : '';
+      document.getElementById('rows').innerHTML = rows.length ? rows.map((p) => `
+        <tr>
+          <td class="num"><span class="medal ${p.rank <= 3 ? 'medal--' + p.rank : ''}" style="margin-left:auto">${p.rank}</span></td>
+          <td class="player">${esc(p.player)}</td>
+          <td class="num points">${p.points}</td>
+          <td class="num">${p.played}</td>
+          <td class="num">${p.wins}</td>
+          <td class="num">${p.podiums}</td>
+          <td class="num">${p.avg.toLocaleString('de-AT')}</td>
+          <td><span class="form-dots">${p.last.map((x) => `<i class="${x <= 3 ? 'p' + x : ''}">${x}</i>`).join('')}</span></td>
+        </tr>`).join('') : `<tr><td colspan="8" class="center muted" style="padding:40px">Noch keine Ergebnisse in dieser Saison.</td></tr>`;
+    }
+
+    async function load(season) {
+      data = await api('/api/leaderboard' + (season ? `?season=${season}` : ''));
+      const sel = document.getElementById('season');
+      const seasons = data.seasons.length ? data.seasons : [data.season];
+      sel.innerHTML = seasons.map((s) => `<option ${s === data.season ? 'selected' : ''}>${s}</option>`).join('');
+      document.getElementById('season-title').textContent = data.season;
+      document.getElementById('season-sub').textContent = `${data.sundays} ${data.sundays === 1 ? 'Sonntag' : 'Sonntage'} gespielt · ${data.king.length} Kings · ${data.queen.length} Queens`;
+      document.getElementById('legend').textContent = 'Punkte pro Sonntag: ' + data.points.map((p, i) => `${i + 1}. = ${p}`).join(', ') +
+        `, ab ${data.points.length + 1}. Platz = ${data.participationPoints}. Bei Punktgleichheit entscheiden Siege, dann beste Platzierung.`;
+      render();
+    }
+
+    document.getElementById('cat').addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      cat = b.dataset.cat;
+      params.set('kategorie', cat);
+      history.replaceState(null, '', '?' + params);
+      render();
+    });
+    document.getElementById('season').addEventListener('change', (ev) => load(ev.target.value));
+    load(params.get('saison')).catch((e) => { document.getElementById('rows').innerHTML = `<tr><td colspan="8"><div class="alert alert--err">${esc(e.message)}</div></td></tr>`; });
+  })();
+  </script>
+</body>
+</html>

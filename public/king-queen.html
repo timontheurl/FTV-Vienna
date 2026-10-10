@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>King &amp; Queen of the Week · FTV Vienna</title>
+  <meta name="description" content="Jeden Sonntag: King & Queen of the Week bei FTV Vienna. Modus, Punkte, Anmeldung und letzte Ergebnisse.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero" style="background:radial-gradient(900px 400px at 90% -20%, rgba(255,207,74,.28), transparent 60%), var(--navy-900)">
+      <div class="wrap">
+        <span class="eyebrow" style="color:var(--gold)">Jeden Sonntag</span>
+        <h1>King &amp; Queen of the Week</h1>
+        <p>Unser Sonntags-Format: Teams werden jede Runde neu zusammengelost, gewertet wird jede:r einzeln. Wer am Ende des Tages vorne liegt, trägt eine Woche lang die Krone – und sammelt Punkte für die Saison-Rangliste.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap grid-2">
+        <div>
+          <div class="section-head"><div><span class="eyebrow">Nächste Sonntage</span><h2>Jetzt anmelden</h2></div></div>
+          <div class="event-list" id="sundays"></div>
+        </div>
+        <div>
+          <div class="section-head"><div><span class="eyebrow">Aktuell</span><h2>Saison-Spitze</h2></div><a class="btn btn--sand btn--sm" href="/rangliste">Komplette Rangliste</a></div>
+          <div class="box"><div class="mini-board" id="board"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head"><div><span class="eyebrow">Modus</span><h2>So läuft der Sonntag</h2></div></div>
+        <div class="rules">
+          <div class="rule"><strong>1 · Check-in</strong><p>Anmelden über die Website, Kategorie wählen (King oder Queen) und pünktlich am Platz sein.</p></div>
+          <div class="rule"><strong>2 · Rotation</strong><p>Jede Runde neue Teams im 2 gegen 2 – du spielst mit und gegen möglichst viele andere.</p></div>
+          <div class="rule"><strong>3 · Einzelwertung</strong><p>Siege und Punktedifferenz zählen für dich persönlich. Daraus ergibt sich die Platzierung des Tages.</p></div>
+          <div class="rule"><strong>4 · Krönung</strong><p>Platz 1 wird King bzw. Queen of the Week. Alle Platzierungen bringen Punkte für die Saison.</p></div>
+        </div>
+        <div style="margin-top:28px">
+          <h3>Punkte pro Sonntag</h3>
+          <div class="points-table" id="points"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head"><div><span class="eyebrow">Ergebnisse</span><h2>Die letzten Sonntage</h2></div></div>
+        <div class="results-grid" id="results"></div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, fmt, eventItem, remember, bindRegisterButtons, skeleton } = FTVApp;
+    const sEl = document.getElementById('sundays');
+
+    async function loadSundays() {
+      sEl.innerHTML = skeleton(2);
+      try {
+        const ev = remember(await api('/api/events?type=kotw&when=upcoming&limit=4'));
+        sEl.innerHTML = ev.length ? ev.map(eventItem).join('') : '<div class="empty">Der nächste Sonntag wird bald eingetragen.</div>';
+      } catch (e) { sEl.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`; }
+    }
+    bindRegisterButtons(sEl, loadSundays);
+    loadSundays();
+
+    api('/api/leaderboard').then((lb) => {
+      const list = (rows) => rows.length
+        ? `<ol>${rows.slice(0, 5).map((p) => `<li><span class="medal medal--${p.rank}">${p.rank}</span>${esc(p.player)}<span class="pts">${p.points}</span></li>`).join('')}</ol>`
+        : '<p class="muted">Noch keine Ergebnisse.</p>';
+      document.getElementById('board').innerHTML = `<div><h4>👑 Kings ${esc(lb.season)}</h4>${list(lb.king)}</div><div><h4>👸 Queens ${esc(lb.season)}</h4>${list(lb.queen)}</div>`;
+      document.getElementById('points').innerHTML = lb.points.map((p, i) => `<span>${i + 1}. Platz<b>${p}</b></span>`).join('') +
+        `<span>ab ${lb.points.length + 1}. Platz<b>${lb.participationPoints}</b></span>`;
+    }).catch(() => {});
+
+    api('/api/kotw/results?limit=6').then((rows) => {
+      const col = (title, list) => `<div><h4>${title}</h4>${list.length ? `<ol>${list.map((r) => `<li>${esc(r.player)} <span class="muted">(${r.points} P)</span></li>`).join('')}</ol>` : '<p class="muted" style="font-size:.85rem">–</p>'}</div>`;
+      document.getElementById('results').innerHTML = rows.length ? rows.map((e) => `
+        <article class="result-card">
+          <span class="tag tag--gold">${fmt.date(e.starts_at)}</span>
+          <h3 style="margin-top:10px">${e.king[0] ? '👑 ' + esc(e.king[0].player) : ''}${e.king[0] && e.queen[0] ? ' · ' : ''}${e.queen[0] ? '👸 ' + esc(e.queen[0].player) : ''}</h3>
+          <div class="cols">${col('Kings', e.king)}${col('Queens', e.queen)}</div>
+        </article>`).join('') : '<div class="empty" style="grid-column:1/-1">Noch keine Ergebnisse eingetragen.</div>';
+    }).catch(() => {});
+  })();
+  </script>
+</body>
+</html>

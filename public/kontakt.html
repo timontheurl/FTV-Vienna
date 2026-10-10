@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kontakt · FTV Vienna</title>
+  <meta name="description" content="Kontakt zu FTV Vienna – Footvolley Wien. Instagram, Verband und Kontaktformular.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Kontakt</span>
+        <h1>Sag Servus</h1>
+        <p>Probetraining, Kooperation, Turnier-Anfrage oder einfach eine Frage? Schreib uns – oder komm direkt bei einem Training vorbei.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap contact-grid">
+        <div>
+          <h2>Direkt erreichen</h2>
+          <div class="contact-list" id="contacts"></div>
+          <div class="box" style="margin-top:20px">
+            <span class="eyebrow">Verband</span>
+            <h3 id="fed-name"></h3>
+            <p class="muted" id="fed-note"></p>
+            <p class="muted mt-0" id="fed-contact" style="margin:0"></p>
+          </div>
+        </div>
+        <div class="box">
+          <h2>Nachricht schreiben</h2>
+          <form class="form" id="contact-form" novalidate>
+            <div class="form-row">
+              <label>Name<input name="name" required maxlength="80" autocomplete="name"></label>
+              <label>E-Mail<input name="email" type="email" required maxlength="200" autocomplete="email"></label>
+            </div>
+            <label>Betreff<select name="subject">
+              <option>Probetraining</option>
+              <option>Mitgliedschaft</option>
+              <option>Turnier / Event</option>
+              <option>Kooperation &amp; Sponsoring</option>
+              <option>Sonstiges</option>
+            </select></label>
+            <label>Nachricht<textarea name="message" required maxlength="4000" placeholder="Was können wir für dich tun?"></textarea></label>
+            <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+            <div id="contact-msg"></div>
+            <button class="btn" type="submit">Nachricht senden</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, ICONS } = FTVApp;
+    const C = FTV;
+    const item = (href, icon, label, value, extra = '') => `
+      <a class="contact-item" href="${esc(href)}" ${href.startsWith('http') ? 'target="_blank" rel="noopener"' : ''}>
+        <span class="ic ${extra}">${icon}</span><span><small>${esc(label)}</small><strong>${esc(value)}</strong></span>
+      </a>`;
+    const handle = (u) => '@' + u.replace(/\/+$/, '').split('/').pop();
+    const out = [];
+    if (C.instagram) out.push(item(C.instagram, ICONS.instagram, 'Instagram FTV Vienna', handle(C.instagram), 'ig-gradient'));
+    if (C.email) out.push(item('mailto:' + C.email, ICONS.mail, 'E-Mail', C.email));
+    if (C.phone) out.push(item('tel:' + C.phone.replace(/\s/g, ''), ICONS.phone, 'Telefon', C.phone));
+    if (C.whatsapp) out.push(item(C.whatsapp, ICONS.chat, 'WhatsApp-Gruppe', 'Beitreten'));
+    out.push(item(C.federation.instagram, ICONS.instagram, 'Instagram Footvolley-Community Österreich', handle(C.federation.instagram), C.instagram ? '' : 'ig-gradient'));
+    out.push(item(C.federation.website, ICONS.globe, C.federation.name, C.federation.website.replace(/^https?:\/\//, '')));
+    out.push(item(C.federation.facebook, ICONS.facebook, 'Facebook', 'Footvolley Austria'));
+    document.getElementById('contacts').innerHTML = out.join('');
+    document.getElementById('fed-name').textContent = C.federation.regional;
+    document.getElementById('fed-note').textContent = C.federation.note;
+    document.getElementById('fed-contact').textContent = 'Ansprechperson Wien: ' + C.federation.viennaContact;
+
+    const form = document.getElementById('contact-form');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const msg = document.getElementById('contact-msg');
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      try {
+        await api('/api/messages', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+        msg.innerHTML = '<div class="alert alert--ok">Danke! Deine Nachricht ist angekommen – wir melden uns so bald wie möglich.</div>';
+        form.reset();
+      } catch (e) {
+        msg.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`;
+      } finally { btn.disabled = false; }
+    });
+  })();
+  </script>
+</body>
+</html>

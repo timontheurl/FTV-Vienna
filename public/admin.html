@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · FTV Vienna</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Intern</span>
+        <h1>Admin-Bereich</h1>
+        <p>Termine anlegen, Anmeldungen einsehen, Sonntags-Ergebnisse eintragen, Turniere und Blogbeiträge pflegen.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div id="login" class="box" style="max-width:440px">
+          <h2>Login</h2>
+          <form class="form" id="login-form">
+            <label>Admin-Passwort<input type="password" name="key" required autocomplete="current-password"></label>
+            <div id="login-msg"></div>
+            <button class="btn" type="submit">Einloggen</button>
+          </form>
+        </div>
+
+        <div id="panel" class="hidden">
+          <div class="toolbar">
+            <div class="tabs admin-tabs" id="admin-tabs">
+              <button class="active" data-tab="events">Termine</button>
+              <button data-tab="results">Ergebnisse</button>
+              <button data-tab="tournaments">Turniere</button>
+              <button data-tab="posts">Blog</button>
+              <button data-tab="messages">Nachrichten</button>
+            </div>
+            <button class="btn btn--ghost btn--sm" id="logout">Logout</button>
+          </div>
+
+          <!-- Events -->
+          <div data-pane="events" class="grid-2">
+            <div class="box">
+              <h2 id="event-form-title">Neuer Termin</h2>
+              <form class="form" id="event-form">
+                <input type="hidden" name="id">
+                <div class="form-row">
+                  <label>Typ<select name="type"><option value="training">Training</option><option value="kotw">King &amp; Queen (Sonntag)</option></select></label>
+                  <label>Titel<input name="title" required maxlength="120" value="Footvolley Training"></label>
+                </div>
+                <div class="form-row">
+                  <label>Beginn<input type="datetime-local" name="starts_at" required></label>
+                  <label>Dauer (Minuten)<input type="number" name="duration" min="15" max="1440" value="120" required></label>
+                </div>
+                <label>Ort<input name="location" required maxlength="200"></label>
+                <div class="form-row">
+                  <label>Level<input name="level" maxlength="60" value="Alle Level"></label>
+                  <label>Plätze<input type="number" name="capacity" min="1" max="500" value="16" required></label>
+                </div>
+                <label>Beschreibung<textarea name="description" maxlength="2000"></textarea></label>
+                <label id="repeat-wrap">Wöchentlich wiederholen (Anzahl Termine)<input type="number" name="repeat_weeks" min="1" max="26" value="1"></label>
+                <div class="form-msg"></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button class="btn" type="submit">Speichern</button>
+                  <button class="btn btn--ghost hidden" type="button" id="event-cancel">Abbrechen</button>
+                </div>
+              </form>
+            </div>
+            <div>
+              <div class="toolbar"><h2 style="margin:0">Termine</h2>
+                <div class="tabs" id="event-when"><button class="active" data-when="upcoming">Kommend</button><button data-when="past">Vergangen</button></div>
+              </div>
+              <div class="admin-list" id="event-list"></div>
+              <div class="box hidden" id="regs" style="margin-top:20px"></div>
+            </div>
+          </div>
+
+          <!-- Results -->
+          <div data-pane="results" class="hidden">
+            <div class="box">
+              <h2>Sonntags-Ergebnisse eintragen</h2>
+              <p class="muted">Termin wählen, dann pro Zeile einen Namen in Reihenfolge der Platzierung (1. Zeile = Platz 1). Namen immer gleich schreiben, damit die Punkte in der Rangliste zusammengezählt werden.</p>
+              <form class="form" id="results-form">
+                <label>Sonntag<select name="event" id="results-event"></select></label>
+                <div class="result-editor">
+                  <label>👑 Kings (Platz 1, 2, 3 …)<textarea name="king" placeholder="Lukas M.&#10;David K.&#10;…"></textarea></label>
+                  <label>👸 Queens (Platz 1, 2, 3 …)<textarea name="queen" placeholder="Anna B.&#10;Lena F.&#10;…"></textarea></label>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button class="btn btn--sand" type="submit">Ergebnisse speichern</button>
+                  <button class="btn btn--ghost" type="button" id="prefill">Mit Angemeldeten vorbefüllen</button>
+                </div>
+                <div class="form-msg"></div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Tournaments -->
+          <div data-pane="tournaments" class="grid-2 hidden">
+            <div class="box">
+              <h2 id="t-form-title">Neues Turnier</h2>
+              <form class="form" id="t-form">
+                <input type="hidden" name="id">
+                <label>Name<input name="name" required maxlength="150"></label>
+                <div class="form-row">
+                  <label>Von<input type="date" name="starts_on" required></label>
+                  <label>Bis (optional)<input type="date" name="ends_on"></label>
+                </div>
+                <label>Ort<input name="location" required maxlength="200"></label>
+                <label>Beschreibung<textarea name="description" maxlength="3000"></textarea></label>
+                <label>Link (optional)<input name="link" type="url" placeholder="https://…"></label>
+                <div class="form-msg"></div>
+                <div style="display:flex;gap:10px"><button class="btn" type="submit">Speichern</button><button class="btn btn--ghost hidden" type="button" data-reset>Abbrechen</button></div>
+              </form>
+            </div>
+            <div><h2>Turniere</h2><div class="admin-list" id="t-list"></div></div>
+          </div>
+
+          <!-- Posts -->
+          <div data-pane="posts" class="grid-2 hidden">
+            <div class="box">
+              <h2 id="p-form-title">Neuer Beitrag</h2>
+              <form class="form" id="p-form">
+                <input type="hidden" name="id">
+                <label>Titel<input name="title" required maxlength="150"></label>
+                <div class="form-row">
+                  <label>Kategorie<input name="tag" maxlength="40" value="News" list="tag-list"></label>
+                  <datalist id="tag-list"><option>News</option><option>Verein</option><option>Training</option><option>Turnier</option><option>Wissen</option></datalist>
+                  <span></span>
+                </div>
+                <label>Kurzbeschreibung<input name="excerpt" maxlength="300"></label>
+                <label>Text (Absätze durch Leerzeile trennen, Links werden automatisch klickbar)<textarea name="body" required maxlength="20000" style="min-height:240px"></textarea></label>
+                <div class="form-msg"></div>
+                <div style="display:flex;gap:10px"><button class="btn" type="submit">Veröffentlichen</button><button class="btn btn--ghost hidden" type="button" data-reset>Abbrechen</button></div>
+              </form>
+            </div>
+            <div><h2>Beiträge</h2><div class="admin-list" id="p-list"></div></div>
+          </div>
+
+          <!-- Messages -->
+          <div data-pane="messages" class="hidden">
+            <h2>Nachrichten aus dem Kontaktformular</h2>
+            <div class="admin-list" id="m-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { esc, fmt } = FTVApp;
+    let key = '';
+    try { key = sessionStorage.getItem('ftv-admin') || ''; } catch { /* ignore */ }
+    const api = (path, opts = {}) => FTVApp.api(path, { ...opts, headers: { 'X-Admin-Key': key } });
+    const $ = (s) => document.querySelector(s);
+    const flash = (form, text, ok = true) => { form.querySelector('.form-msg').innerHTML = text ? `<div class="alert alert--${ok ? 'ok' : 'err'}">${esc(text)}</div>` : ''; };
+    const fill = (form, data) => Object.entries(data).forEach(([k, v]) => { if (form.elements[k]) form.elements[k].value = v ?? ''; });
+
+    async function login(k) {
+      key = k;
+      await api('/api/admin/check');
+      try { sessionStorage.setItem('ftv-admin', key); } catch { /* ignore */ }
+      $('#login').classList.add('hidden');
+      $('#panel').classList.remove('hidden');
+      loadEvents(); loadResultsSelect(); loadTournaments(); loadPosts(); loadMessages();
+    }
+    $('#login-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      login(ev.target.key.value).catch((e) => { $('#login-msg').innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`; });
+    });
+    if (key) login(key).catch(() => { key = ''; });
+    $('#logout').addEventListener('click', () => { try { sessionStorage.removeItem('ftv-admin'); } catch {} location.reload(); });
+
+    $('#admin-tabs').addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      document.querySelectorAll('#admin-tabs button').forEach((x) => x.classList.toggle('active', x === b));
+      document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab));
+      if (b.dataset.tab === 'results') loadResultsSelect();
+      if (b.dataset.tab === 'messages') loadMessages();
+    });
+
+    // ---------- Events ----------
+    const eForm = $('#event-form');
+    let when = 'upcoming';
+    eForm.elements.location.value = FTV.homeLocation;
+    eForm.elements.type.addEventListener('change', () => {
+      if (eForm.elements.type.value === 'kotw' && eForm.elements.title.value === 'Footvolley Training') {
+        eForm.elements.title.value = 'Sunday King & Queen of the Week';
+        eForm.elements.capacity.value = 32;
+        eForm.elements.duration.value = 240;
+      }
+    });
+    function resetEventForm() {
+      eForm.reset();
+      eForm.elements.id.value = '';
+      eForm.elements.location.value = FTV.homeLocation;
+      $('#event-form-title').textContent = 'Neuer Termin';
+      $('#event-cancel').classList.add('hidden');
+      $('#repeat-wrap').classList.remove('hidden');
+    }
+    $('#event-cancel').addEventListener('click', resetEventForm);
+    eForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const d = Object.fromEntries(new FormData(eForm));
+      try {
+        if (d.id) await api(`/api/admin/events/${d.id}`, { method: 'PUT', body: d });
+        else await api('/api/admin/events', { method: 'POST', body: d });
+        resetEventForm();
+        flash(eForm, 'Gespeichert.');
+        loadEvents();
+      } catch (e) { flash(eForm, e.message, false); }
+    });
+    $('#event-when').addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      when = b.dataset.when;
+      document.querySelectorAll('#event-when button').forEach((x) => x.classList.toggle('active', x === b));
+      loadEvents();
+    });
+    let events = [];
+    async function loadEvents() {
+      events = await FTVApp.api(`/api/events?when=${when}`);
+      $('#event-list').innerHTML = events.length ? events.map((e) => `
+        <div class="admin-row">
+          <div class="info"><strong>${e.type === 'kotw' ? '👑 ' : ''}${esc(e.title)}</strong><small>${fmt.long(e.starts_at)} · ${fmt.time(e.starts_at)} · ${e.registered}/${e.capacity}${e.waitlist ? ` (+${e.waitlist} WL)` : ''}</small></div>
+          <div class="actions">
+            <button class="btn btn--ghost btn--sm" data-regs="${e.id}">Teilnehmer</button>
+            <button class="btn btn--ghost btn--sm" data-edit="${e.id}">Bearbeiten</button>
+            <button class="btn btn--danger btn--sm" data-del="${e.id}">Löschen</button>
+          </div>
+        </div>`).join('') : '<div class="empty">Keine Termine.</div>';
+    }
+    $('#event-list').addEventListener('click', async (ev) => {
+      const t = ev.target.closest('button');
+      if (!t) return;
+      if (t.dataset.edit) {
+        const e = events.find((x) => String(x.id) === t.dataset.edit);
+        fill(eForm, e);
+        $('#event-form-title').textContent = 'Termin bearbeiten';
+        $('#event-cancel').classList.remove('hidden');
+        $('#repeat-wrap').classList.add('hidden');
+        eForm.scrollIntoView({ behavior: 'smooth' });
+      } else if (t.dataset.del) {
+        if (!confirm('Termin inklusive aller Anmeldungen und Ergebnisse löschen?')) return;
+        await api(`/api/admin/events/${t.dataset.del}`, { method: 'DELETE' });
+        loadEvents();
+      } else if (t.dataset.regs) {
+        showRegs(t.dataset.regs);
+      }
+    });
+    async function showRegs(id) {
+      const e = events.find((x) => String(x.id) === String(id));
+      const regs = await api(`/api/admin/events/${id}/registrations`);
+      const box = $('#regs');
+      box.classList.remove('hidden');
+      box.innerHTML = `<h3>${esc(e.title)} · ${fmt.date(e.starts_at)}</h3>
+        ${regs.length ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Name</th><th>E-Mail</th><th>Kat.</th><th>Notiz</th><th></th></tr></thead><tbody>
+        ${regs.map((r, i) => `<tr><td>${i + 1}${r.waitlist ? ' <span class="spots spots--full">WL</span>' : ''}</td><td>${esc(r.name)}</td><td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td><td>${r.category === 'king' ? '👑' : r.category === 'queen' ? '👸' : ''}</td><td>${esc(r.note)}</td><td><button class="btn btn--danger btn--sm" data-unreg="${r.id}" data-ev="${id}">Entfernen</button></td></tr>`).join('')}
+        </tbody></table></div>
+        <p style="margin-top:12px"><a class="btn btn--ghost btn--sm" href="mailto:?bcc=${encodeURIComponent(regs.map((r) => r.email).join(','))}">E-Mail an alle</a></p>` : '<p class="muted">Noch keine Anmeldungen.</p>'}`;
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    $('#regs').addEventListener('click', async (ev) => {
+      const b = ev.target.closest('[data-unreg]');
+      if (!b || !confirm('Anmeldung entfernen?')) return;
+      await api(`/api/admin/registrations/${b.dataset.unreg}`, { method: 'DELETE' });
+      await loadEvents();
+      showRegs(b.dataset.ev);
+    });
+
+    // ---------- Results ----------
+    const rForm = $('#results-form');
+    async function loadResultsSelect() {
+      const [past, upcoming] = await Promise.all([FTVApp.api('/api/events?type=kotw&when=past&limit=60'), FTVApp.api('/api/events?type=kotw&when=upcoming&limit=3')]);
+      const list = [...upcoming.reverse(), ...past];
+      const sel = $('#results-event');
+      const prev = sel.value;
+      sel.innerHTML = list.map((e) => `<option value="${e.id}">${fmt.long(e.starts_at)}${e.starts_at > new Date().toISOString() ? ' (kommend)' : ''}</option>`).join('');
+      if (prev && list.some((e) => String(e.id) === prev)) sel.value = prev;
+      else if (past[0]) sel.value = past[0].id;
+      loadResults();
+    }
+    async function loadResults() {
+      const id = $('#results-event').value;
+      if (!id) return;
+      const r = await api(`/api/admin/events/${id}/results`);
+      rForm.king.value = r.king.join('\n');
+      rForm.queen.value = r.queen.join('\n');
+      flash(rForm, '');
+    }
+    $('#results-event').addEventListener('change', loadResults);
+    $('#prefill').addEventListener('click', async () => {
+      const regs = await api(`/api/admin/events/${$('#results-event').value}/registrations`);
+      if (!rForm.king.value.trim()) rForm.king.value = regs.filter((r) => r.category === 'king').map((r) => r.name).join('\n');
+      if (!rForm.queen.value.trim()) rForm.queen.value = regs.filter((r) => r.category === 'queen').map((r) => r.name).join('\n');
+      flash(rForm, regs.length ? 'Namen eingefügt – jetzt in die richtige Reihenfolge bringen.' : 'Keine Anmeldungen für diesen Termin.', !!regs.length);
+    });
+    rForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const lines = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
+      try {
+        await api(`/api/admin/events/${$('#results-event').value}/results`, { method: 'PUT', body: { king: lines(rForm.king.value), queen: lines(rForm.queen.value) } });
+        flash(rForm, 'Ergebnisse gespeichert – die Rangliste ist aktualisiert.');
+      } catch (e) { flash(rForm, e.message, false); }
+    });
+
+    // ---------- Generic CRUD (tournaments, posts) ----------
+    function crud({ form, list, title, newTitle, editTitle, endpoint, adminEndpoint, row, fetchOne }) {
+      let items = [];
+      const resetBtn = form.querySelector('[data-reset]');
+      const reset = () => { form.reset(); form.elements.id.value = ''; $(title).textContent = newTitle; resetBtn.classList.add('hidden'); };
+      resetBtn.addEventListener('click', reset);
+      async function load() {
+        items = await FTVApp.api(endpoint);
+        $(list).innerHTML = items.length ? items.map((it) => `<div class="admin-row"><div class="info">${row(it)}</div><div class="actions">
+          <button class="btn btn--ghost btn--sm" data-edit="${it.id}">Bearbeiten</button><button class="btn btn--danger btn--sm" data-del="${it.id}">Löschen</button></div></div>`).join('') : '<div class="empty">Noch nichts eingetragen.</div>';
+      }
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const d = Object.fromEntries(new FormData(form));
+        try {
+          if (d.id) await api(`${adminEndpoint}/${d.id}`, { method: 'PUT', body: d });
+          else await api(adminEndpoint, { method: 'POST', body: d });
+          reset(); flash(form, 'Gespeichert.'); load();
+        } catch (e) { flash(form, e.message, false); }
+      });
+      $(list).addEventListener('click', async (ev) => {
+        const b = ev.target.closest('button');
+        if (!b) return;
+        if (b.dataset.edit) {
+          const it = fetchOne ? await fetchOne(b.dataset.edit) : items.find((x) => String(x.id) === b.dataset.edit);
+          fill(form, it);
+          $(title).textContent = editTitle;
+          resetBtn.classList.remove('hidden');
+          form.scrollIntoView({ behavior: 'smooth' });
+        } else if (b.dataset.del && confirm('Wirklich löschen?')) {
+          await api(`${adminEndpoint}/${b.dataset.del}`, { method: 'DELETE' });
+          load();
+        }
+      });
+      return load;
+    }
+    const loadTournaments = crud({ form: $('#t-form'), list: '#t-list', title: '#t-form-title', newTitle: 'Neues Turnier', editTitle: 'Turnier bearbeiten',
+      endpoint: '/api/tournaments', adminEndpoint: '/api/admin/tournaments',
+      row: (t) => `<strong>${esc(t.name)}</strong><small>${fmt.date(t.starts_on)} · ${esc(t.location)}</small>` });
+    const loadPosts = crud({ form: $('#p-form'), list: '#p-list', title: '#p-form-title', newTitle: 'Neuer Beitrag', editTitle: 'Beitrag bearbeiten',
+      endpoint: '/api/posts', adminEndpoint: '/api/admin/posts', fetchOne: (id) => FTVApp.api(`/api/posts/${id}`),
+      row: (p) => `<strong>${esc(p.title)}</strong><small>${esc(p.tag)} · ${fmt.date(p.published_at.replace(' ', 'T'))}</small>` });
+
+    // ---------- Messages ----------
+    async function loadMessages() {
+      const msgs = await api('/api/admin/messages');
+      $('#m-list').innerHTML = msgs.length ? msgs.map((m) => `
+        <div class="admin-row" style="align-items:start">
+          <div class="info" style="flex:1"><strong>${esc(m.subject || 'Ohne Betreff')} – ${esc(m.name)}</strong>
+            <small><a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: ' + (m.subject || 'Deine Nachricht an FTV Vienna'))}">${esc(m.email)}</a> · ${esc(m.created_at)} UTC</small>
+            <p style="margin:8px 0 0;white-space:pre-wrap">${esc(m.message)}</p></div>
+          <div class="actions"><button class="btn btn--danger btn--sm" data-mdel="${m.id}">Löschen</button></div>
+        </div>`).join('') : '<div class="empty">Keine Nachrichten.</div>';
+    }
+    $('#m-list').addEventListener('click', async (ev) => {
+      const b = ev.target.closest('[data-mdel]');
+      if (!b || !confirm('Nachricht löschen?')) return;
+      await api(`/api/admin/messages/${b.dataset.mdel}`, { method: 'DELETE' });
+      loadMessages();
+    });
+  })();
+  </script>
+</body>
+</html>

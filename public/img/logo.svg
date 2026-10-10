@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FTV Vienna">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6a45"/>
+      <stop offset="1" stop-color="#f3d9a4"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#g)"/>
+  <g fill="none" stroke="#06111c" stroke-width="3" stroke-linecap="round">
+    <path d="M32 2c-9 9-12 19-9 30s14 20 9 30"/>
+    <path d="M5 20c10 5 22 6 34 1s19-4 22 1"/>
+    <path d="M6 45c9-6 20-8 30-4s18 3 22-2"/>
+  </g>
+</svg>

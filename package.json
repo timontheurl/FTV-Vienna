@@ -1,0 +1,16 @@
+{
+  "name": "ftv-vienna",
+  "version": "1.0.0",
+  "description": "Vereins-Web-App für FTV Vienna (Footvolley Wien): Trainings, King/Queen of the Week, Rangliste, Turniere, Blog",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "test": "node --no-warnings --test"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "UNLICENSED"
+}

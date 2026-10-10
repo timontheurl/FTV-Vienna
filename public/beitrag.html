@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beitrag · FTV Vienna</title>
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap article">
+        <a href="/blog" class="muted" style="display:inline-block;margin-bottom:18px">← Zurück zum Blog</a>
+        <div id="meta"></div>
+        <h1 id="title" style="font-size:clamp(2.6rem,6vw,4.4rem)">&nbsp;</h1>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap article">
+        <div class="article-body" id="body"><div class="skeleton"></div></div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, fmt } = FTVApp;
+    const id = new URLSearchParams(location.search).get('id');
+    // Plain text -> paragraphs; URLs become links. Everything else is escaped.
+    const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    api(`/api/posts/${encodeURIComponent(id)}`).then((p) => {
+      document.title = `${p.title} · FTV Vienna`;
+      document.getElementById('title').textContent = p.title;
+      document.getElementById('meta').innerHTML = `<span class="tag">${esc(p.tag)}</span> <span class="muted" style="margin-left:10px">${fmt.date(p.published_at.replace(' ', 'T'))}</span>`;
+      document.getElementById('body').innerHTML = p.body.split(/\n{2,}/).map((para) => `<p>${linkify(para).replace(/\n/g, '<br>')}</p>`).join('');
+    }).catch((e) => {
+      document.getElementById('title').textContent = 'Beitrag nicht gefunden';
+      document.getElementById('body').innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`;
+    });
+  })();
+  </script>
+</body>
+</html>

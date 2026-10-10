@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trainings · FTV Vienna</title>
+  <meta name="description" content="Footvolley-Trainings in Wien – Termine ansehen und online anmelden.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Trainings</span>
+        <h1>Ab in den Sand</h1>
+        <p>Wähle einen Termin, trag dich ein – fertig. Ist ein Training voll, kommst du auf die Warteliste und rückst automatisch nach, sobald jemand absagt.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="toolbar">
+          <div class="tabs" id="filter" role="tablist">
+            <button class="active" data-type="">Alle Termine</button>
+            <button data-type="training">Trainings</button>
+            <button data-type="kotw">King &amp; Queen (So)</button>
+          </div>
+          <span class="muted" id="count"></span>
+        </div>
+        <div class="cards" id="list"></div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0" id="absagen">
+      <div class="wrap grid-2">
+        <div class="box">
+          <span class="eyebrow">Absagen</span>
+          <h2>Kannst du doch nicht?</h2>
+          <p class="muted">Gib deinen Stornocode ein, den du bei der Anmeldung bekommen hast. Dein Platz geht dann an die nächste Person auf der Warteliste.</p>
+          <form class="form" id="cancel-form">
+            <label>Stornocode<input name="code" required maxlength="32" placeholder="z. B. a1b2c3d4e5f6" autocomplete="off"></label>
+            <div id="cancel-msg"></div>
+            <button class="btn btn--ghost" type="submit">Anmeldung stornieren</button>
+          </form>
+        </div>
+        <div class="box">
+          <span class="eyebrow">Gut zu wissen</span>
+          <h2>Was mitbringen?</h2>
+          <ul class="muted" style="padding-left:20px;margin:0">
+            <li>Barfuß spielen ist Standard – Sandsocken sind bei heißem Sand Gold wert.</li>
+            <li>Sportgewand, Sonnenschutz &amp; genug Wasser.</li>
+            <li>Bälle stellen wir. Eigener Ball? Gerne mitnehmen!</li>
+            <li>Bitte 10 Minuten vorher da sein – wir starten mit gemeinsamem Warm-up.</li>
+            <li>Bei Gewitter oder Dauerregen sagen wir rechtzeitig über Instagram ab.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, fmt, ICONS, dateBadge, spotsBadge, remember, bindRegisterButtons, skeleton } = FTVApp;
+    const list = document.getElementById('list');
+    let type = new URLSearchParams(location.search).get('typ') || '';
+
+    function card(e) {
+      const pct = Math.min(100, Math.round((e.registered / e.capacity) * 100));
+      const kotw = e.type === 'kotw';
+      return `
+        <article class="card">
+          <div class="card-top">
+            ${dateBadge(e.starts_at)}
+            <div>
+              <span class="tag ${kotw ? 'tag--gold' : 'tag--teal'}">${kotw ? 'King & Queen' : 'Training'}</span>
+              <h3>${esc(e.title)}</h3>
+            </div>
+          </div>
+          <div class="event-meta">
+            <span>${ICONS.clock}${fmt.timeRange(e.starts_at, e.duration)}</span>
+            <span>${ICONS.pin}${esc(e.location)}</span>
+            <span>${ICONS.level}${esc(e.level)}</span>
+          </div>
+          ${e.description ? `<p>${esc(e.description)}</p>` : ''}
+          <div>
+            <div class="event-meta"><span>${ICONS.users}${e.registered} / ${e.capacity} angemeldet</span></div>
+            <div class="capacity-bar"><span style="width:${pct}%"></span></div>
+          </div>
+          ${e.participants.length ? `<div class="participants">${e.participants.map((p) => `<span>${p.category === 'king' ? '👑 ' : p.category === 'queen' ? '👸 ' : ''}${esc(p.name)}</span>`).join('')}</div>` : ''}
+          <div class="card-foot">
+            ${spotsBadge(e)}
+            <button class="btn btn--sm ${kotw ? 'btn--sand' : ''}" data-register="${e.id}">${e.spotsLeft ? 'Anmelden' : 'Warteliste'}</button>
+          </div>
+        </article>`;
+    }
+
+    async function load() {
+      list.innerHTML = skeleton(3);
+      try {
+        const events = remember(await api(`/api/events?when=upcoming${type ? '&type=' + type : ''}`));
+        document.getElementById('count').textContent = `${events.length} ${events.length === 1 ? 'Termin' : 'Termine'}`;
+        list.innerHTML = events.length ? events.map(card).join('') : '<div class="empty" style="grid-column:1/-1">Keine kommenden Termine. Folge uns auf Instagram, um nichts zu verpassen!</div>';
+      } catch (e) {
+        list.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`;
+      }
+    }
+
+    const tabs = document.getElementById('filter');
+    tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.type === type));
+    tabs.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      type = b.dataset.type;
+      tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      history.replaceState(null, '', type ? `?typ=${type}` : location.pathname);
+      load();
+    });
+
+    bindRegisterButtons(list, load);
+    load();
+
+    document.getElementById('cancel-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const code = ev.target.code.value;
+      const msg = document.getElementById('cancel-msg');
+      try {
+        const r = await api('/api/registrations/cancel', { method: 'POST', body: { code } });
+        msg.innerHTML = `<div class="alert alert--ok">Abgemeldet von „${esc(r.event.title)}“ am ${fmt.date(r.event.starts_at)}. Danke fürs Bescheidgeben!</div>`;
+        ev.target.reset();
+        load();
+      } catch (e) {
+        msg.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

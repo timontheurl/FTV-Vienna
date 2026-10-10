@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turniere · FTV Vienna</title>
+  <meta name="description" content="Footvolley-Turniere mit FTV Vienna und in Österreich.">
+  <meta name="theme-color" content="#06111c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Turniere</span>
+        <h1>Turnierkalender</h1>
+        <p>Vereinsturniere, Saisonfinale und Termine aus der österreichischen Footvolley-Szene. Die meisten nationalen und internationalen Turniere richtet Footvolley Austria aus – viele davon in Graz.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head"><div><span class="eyebrow">Demnächst</span><h2>Kommende Turniere</h2></div></div>
+        <div class="timeline" id="upcoming"></div>
+        <div id="past-wrap" class="hidden" style="margin-top:60px">
+          <div class="section-head"><div><span class="eyebrow">Archiv</span><h2>Vergangene Turniere</h2></div></div>
+          <div class="timeline" id="past"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer"></footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  (function () {
+    const { api, esc, fmt, ICONS, skeleton } = FTVApp;
+    const up = document.getElementById('upcoming');
+    up.innerHTML = skeleton(2);
+    const today = new Date().toISOString().slice(0, 10);
+    const item = (t, past) => `
+      <article class="tourney ${past ? 'past' : ''}">
+        <div class="when"><div class="mon">${fmt.mon(t.starts_on)}</div><div class="day">${fmt.day(t.starts_on)}${t.ends_on && t.ends_on !== t.starts_on ? '–' + fmt.day(t.ends_on) : ''}</div><div class="yr">${fmt.year(t.starts_on)}</div></div>
+        <div>
+          <h3>${esc(t.name)}</h3>
+          <div class="event-meta"><span>${ICONS.pin}${esc(t.location)}</span></div>
+          ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+        </div>
+        ${t.link ? `<a class="btn btn--ghost btn--sm" href="${esc(t.link)}" target="_blank" rel="noopener">Details ${ICONS.arrow}</a>` : '<span></span>'}
+      </article>`;
+    api('/api/tournaments').then((list) => {
+      const future = list.filter((t) => (t.ends_on || t.starts_on) >= today);
+      const past = list.filter((t) => (t.ends_on || t.starts_on) < today).reverse();
+      up.innerHTML = future.length ? future.map((t) => item(t, false)).join('') : '<div class="empty">Aktuell keine Turniere eingetragen. Infos zu österreichweiten Turnieren findest du bei <a href="https://footvolleyaustria.at" target="_blank" rel="noopener">Footvolley Austria</a>.</div>';
+      if (past.length) {
+        document.getElementById('past-wrap').classList.remove('hidden');
+        document.getElementById('past').innerHTML = past.map((t) => item(t, true)).join('');
+      }
+    }).catch((e) => { up.innerHTML = `<div class="alert alert--err">${esc(e.message)}</div>`; });
+  })();
+  </script>
+</body>
+</html>
