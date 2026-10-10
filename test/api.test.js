@@ -4,12 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 const path = require('node:path');
-const { open, seed } = require('../src/db');
+const { open } = require('../src/db');
 const { createApp } = require('../src/app');
 
 async function start() {
-  const db = open(':memory:');
-  seed(db);
+  const db = open({ url: ':memory:' });
   const app = createApp({ db, adminPassword: 'secret', publicDir: path.join(__dirname, '..', 'public') });
   const server = http.createServer(app);
   await new Promise((r) => server.listen(0, r));
@@ -99,4 +98,21 @@ test('static pages and pretty URLs', async (t) => {
   }
   assert.strictEqual((await fetch(base + '/gibts-nicht')).status, 404);
   assert.notStrictEqual((await fetch(base + '/..%2fpackage.json')).status, 200);
+});
+
+test('deleting an event removes its registrations and results', async (t) => {
+  const { server, call } = await start();
+  t.after(() => server.close());
+  const { body } = await call('POST', '/api/admin/events', {
+    type: 'kotw', title: 'So', starts_at: '2032-05-02T14:00', location: 'Sand', repeat_weeks: 2,
+  }, true);
+  assert.strictEqual(body.ids.length, 2);
+  const [id] = body.ids;
+  assert.strictEqual((await call('GET', `/api/events/${body.ids[1]}`)).body.starts_at, '2032-05-09T14:00');
+  await call('POST', `/api/events/${id}/register`, { name: 'Zoe', email: 'zoe@example.com', category: 'queen' });
+  await call('PUT', `/api/admin/events/${id}/results`, { queen: ['Zoe'] }, true);
+  assert.strictEqual((await call('GET', '/api/leaderboard?season=2032')).body.queen.length, 1);
+  assert.strictEqual((await call('DELETE', `/api/admin/events/${id}`, null, true)).status, 200);
+  assert.strictEqual((await call('GET', '/api/leaderboard?season=2032')).body.queen.length, 0);
+  assert.strictEqual((await call('GET', `/api/events/${id}`)).status, 404);
 });

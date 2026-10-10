@@ -5,12 +5,15 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node --no-warnings server.js",
-    "dev": "node --no-warnings --watch server.js",
-    "test": "node --no-warnings --test"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
   },
   "engines": {
-    "node": ">=22.5"
+    "node": "22.x"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@libsql/client": "^0.18.0"
+  }
 }

@@ -172,7 +172,7 @@
     m.setAttribute('role', 'dialog');
     m.setAttribute('aria-modal', 'true');
     m.innerHTML = '<div class="modal"></div>';
-    m.addEventListener('click', (ev) => { if (ev.target === m || ev.target.closest('.modal-close')) closeModal(); });
+    m.addEventListener('click', (ev) => { if (ev.target === m || ev.target.closest('.modal-close, [data-close]')) closeModal(); });
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeModal(); });
     document.body.appendChild(m);
     return m;
@@ -225,7 +225,7 @@
           <div class="modal-event"><strong>${esc(e.title)}</strong>${fmt.long(e.starts_at)} · ${fmt.timeRange(e.starts_at, e.duration)}<br>${esc(e.location)}</div>
           <p>Dein Stornocode: <span class="code">${esc(r.cancelCode)}</span></p>
           <p class="muted">Notier ihn dir (Screenshot!). Falls du doch nicht kannst, sag damit auf der <a href="/trainings#absagen">Trainings-Seite</a> ab – so rückt jemand von der Warteliste nach.</p>
-          <button class="btn btn--sand modal-close" style="width:auto;height:auto;border-radius:999px;font-size:.95rem">Alles klar</button>`;
+          <button class="btn btn--sand" data-close>Alles klar</button>`;
         eventCache.set(String(e.id), r.event);
         if (onDone) onDone(r.event);
       } catch (err) {

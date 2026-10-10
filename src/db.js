@@ -2,7 +2,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
+const { createClient } = require('@libsql/client');
+
+// All event times are Vienna wall-clock times. Serverless hosts (Vercel) run in UTC,
+// so pin the process time zone before any Date is created.
+process.env.TZ = process.env.APP_TZ || 'Europe/Vienna';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
@@ -68,12 +72,28 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `;
 
-function open(file) {
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
-  db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-  db.exec(SCHEMA);
-  return db;
+// Thin async wrapper around libSQL. Works with a remote Turso database
+// (libsql://…) as well as a local file (file:…) or ':memory:' for tests.
+function open({ url, authToken } = {}) {
+  url = url || 'file:' + path.join(__dirname, '..', 'data', 'ftv-vienna.db');
+  if (url.startsWith('file:')) fs.mkdirSync(path.dirname(url.slice(5)), { recursive: true });
+  const client = createClient({ url, authToken });
+  const exec = async (sql, args = []) => client.execute({ sql, args });
+  return {
+    client,
+    all: async (sql, ...args) => (await exec(sql, args)).rows.map((r) => ({ ...r })),
+    get: async (sql, ...args) => {
+      const r = (await exec(sql, args)).rows[0];
+      return r ? { ...r } : undefined;
+    },
+    run: async (sql, ...args) => {
+      const r = await exec(sql, args);
+      return { changes: r.rowsAffected, lastInsertRowid: r.lastInsertRowid == null ? null : Number(r.lastInsertRowid) };
+    },
+    // Runs statements atomically: [[sql, args], ...]
+    batch: async (stmts) => client.batch(stmts.map(([sql, args = []]) => ({ sql, args })), 'write'),
+    migrate: async () => client.executeMultiple('PRAGMA foreign_keys = ON;' + SCHEMA),
+  };
 }
 
 // --- Demo content -----------------------------------------------------------
@@ -101,23 +121,25 @@ function addDays(d, n) {
   return c;
 }
 
-function seed(db, now = new Date()) {
-  const count = db.prepare('SELECT COUNT(*) AS n FROM events').get().n;
-  if (count > 0) return false;
+async function seed(db, now = new Date()) {
+  const { n } = await db.get('SELECT COUNT(*) AS n FROM events');
+  if (n > 0) return false;
+  const stmts = [];
 
-  const insEvent = db.prepare(`INSERT INTO events (type, title, starts_at, duration, location, level, capacity, description)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const EVENT = `INSERT INTO events (type, title, starts_at, duration, location, level, capacity, description)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+  const insEvent = (...args) => stmts.push([EVENT, args]);
   const location = 'Beachplatz Wien (Ort im Admin-Bereich anpassen)';
 
   const tue = nextWeekday(now, 2);
   const thu = nextWeekday(now, 4);
   const sun = nextWeekday(now, 0);
   for (let w = 0; w < 4; w++) {
-    insEvent.run('training', 'Footvolley Basics', localIso(addDays(tue, 7 * w), 18, 0), 120, location,
+    insEvent('training', 'Footvolley Basics', localIso(addDays(tue, 7 * w), 18, 0), 120, location,
       'Einsteiger:innen', 12, 'Grundtechniken: Annahme mit Brust & Oberschenkel, Pass, Shark Attack für Anfänger. Ball wird gestellt.');
-    insEvent.run('training', 'Footvolley Advanced', localIso(addDays(thu, 7 * w), 18, 30), 120, location,
+    insEvent('training', 'Footvolley Advanced', localIso(addDays(thu, 7 * w), 18, 30), 120, location,
       'Fortgeschrittene', 16, 'Spielformen, Angriff (Shark Attack, Pescoço), Block & Defense. Gutes Ballgefühl vorausgesetzt.');
-    insEvent.run('kotw', 'Sunday King & Queen of the Week', localIso(addDays(sun, 7 * w), 14, 0), 240, location,
+    insEvent('kotw', 'Sunday King & Queen of the Week', localIso(addDays(sun, 7 * w), 14, 0), 240, location,
       'Alle Level', 32, 'Jeden Sonntag: Teams werden jede Runde neu gemischt, gezählt wird individuell. Die besten Spieler:innen holen Punkte für die Saison-Rangliste.');
   }
 
@@ -131,35 +153,37 @@ function seed(db, now = new Date()) {
     ['Anna B.', 'Lena F.', 'Sophie G.', 'Marie T.'],
     ['Lena F.', 'Anna B.', 'Julia N.', 'Sophie G.'],
   ];
-  const insResult = db.prepare('INSERT INTO results (event_id, category, player, placement) VALUES (?, ?, ?, ?)');
+  const RESULT = `INSERT INTO results (event_id, category, player, placement)
+                  VALUES ((SELECT MAX(id) FROM events), ?, ?, ?)`;
   pastSundays.forEach((d, i) => {
-    const { lastInsertRowid: id } = insEvent.run('kotw', 'Sunday King & Queen of the Week', localIso(d, 14, 0), 240,
+    insEvent('kotw', 'Sunday King & Queen of the Week', localIso(d, 14, 0), 240,
       location, 'Alle Level', 32, 'Demo-Ergebnis – im Admin-Bereich löschbar.');
-    kingResults[i].forEach((p, idx) => insResult.run(id, 'king', p, idx + 1));
-    queenResults[i].forEach((p, idx) => insResult.run(id, 'queen', p, idx + 1));
+    kingResults[i].forEach((p, idx) => stmts.push([RESULT, ['king', p, idx + 1]]));
+    queenResults[i].forEach((p, idx) => stmts.push([RESULT, ['queen', p, idx + 1]]));
   });
 
-  db.prepare(`INSERT INTO tournaments (name, starts_on, ends_on, location, description, link) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run('FTV Vienna Season Finale (Beispiel)', localIso(addDays(sun, 27), 0, 0).slice(0, 10), null, location,
-      'Saisonabschluss mit 2-gegen-2-Turnier und Krönung von King & Queen of the Season. Beispiel-Eintrag – bitte im Admin-Bereich anpassen.', '');
-  db.prepare(`INSERT INTO tournaments (name, starts_on, ends_on, location, description, link) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run('Footvolley Austria – Turnierkalender', localIso(now, 0, 0).slice(0, 10), null, 'Österreich (v. a. Graz)',
-      'Nationale und internationale Turniere organisiert Footvolley Austria – Termine findest du auf der Verbandsseite.', 'https://footvolleyaustria.at');
+  const TOURNAMENT = 'INSERT INTO tournaments (name, starts_on, ends_on, location, description, link) VALUES (?, ?, ?, ?, ?, ?)';
+  stmts.push([TOURNAMENT, ['FTV Vienna Season Finale (Beispiel)', localIso(addDays(sun, 27), 0, 0).slice(0, 10), null, location,
+      'Saisonabschluss mit 2-gegen-2-Turnier und Krönung von King & Queen of the Season. Beispiel-Eintrag – bitte im Admin-Bereich anpassen.', '']]);
+  stmts.push([TOURNAMENT, ['Footvolley Austria – Turnierkalender', localIso(now, 0, 0).slice(0, 10), null, 'Österreich (v. a. Graz)',
+      'Nationale und internationale Turniere organisiert Footvolley Austria – Termine findest du auf der Verbandsseite.', 'https://footvolleyaustria.at']]);
 
-  const insPost = db.prepare('INSERT INTO posts (title, excerpt, body, tag, published_at) VALUES (?, ?, ?, ?, ?)');
-  insPost.run('Willkommen auf der neuen FTV-Vienna-Website',
+  const POST = 'INSERT INTO posts (title, excerpt, body, tag, published_at) VALUES (?, ?, ?, ?, ?)';
+  const insPost = (...args) => stmts.push([POST, args]);
+  insPost('Willkommen auf der neuen FTV-Vienna-Website',
     'Trainings buchen, Sonntags-Rangliste checken, News lesen – ab jetzt alles an einem Ort.',
     'Servus und willkommen! Ab sofort könnt ihr euch hier direkt für unsere Trainings anmelden – kein Herumschreiben in Gruppen mehr.\n\n' +
     'Jeden Sonntag spielen wir King & Queen of the Week. Die Ergebnisse tragen wir ein, und auf der Rangliste seht ihr, wer die Saison anführt.\n\n' +
     'Neuigkeiten, Turniere und Infos rund um Footvolley in Wien findet ihr im Blog. Folgt uns auch auf Instagram!',
     'Verein', `${localIso(addDays(now, -2), 10, 0).replace('T', ' ')}:00`);
-  insPost.run('Was ist Footvolley eigentlich?',
+  insPost('Was ist Footvolley eigentlich?',
     'Beachvolleyball-Feld, Fußball-Technik: Ein kurzer Überblick über unseren Sport.',
     'Footvolley (portugiesisch: Futevôlei) wurde 1965 in Rio de Janeiro erfunden. Gespielt wird auf einem Beachvolleyballfeld – aber ohne Hände. ' +
     'Erlaubt ist alles, was auch beim Fußball erlaubt ist: Fuß, Oberschenkel, Brust, Kopf und Schulter.\n\n' +
     'Jedes Team hat maximal drei Ballkontakte, gespielt wird klassischerweise 2 gegen 2. Typische Angriffe heißen Shark Attack (Fallrückzieher-artiger Schuss von oben) oder Pescoço (mit dem Nacken).\n\n' +
     'In Österreich wird Footvolley seit 2010 vom Verein Footvolley Austria gefördert, in Wien vom Landesverband Footvolley Wien. Komm einfach zu einem Basics-Training – Ballgefühl ist hilfreich, aber keine Voraussetzung.',
     'Wissen', `${localIso(addDays(now, -9), 10, 0).replace('T', ' ')}:00`);
+  await db.batch(stmts);
   return true;
 }
 

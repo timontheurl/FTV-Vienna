@@ -3,6 +3,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { seed } = require('./db');
+
+// Event times are stored as Vienna wall-clock time (see src/db.js).
+process.env.TZ = process.env.APP_TZ || 'Europe/Vienna';
 
 // Points per placement for King/Queen of the Week. Index 0 = 1st place.
 // Everyone who played but placed lower than the table still gets PARTICIPATION_POINTS.
@@ -79,7 +83,15 @@ function nowLocalIso() {
 
 // --- App --------------------------------------------------------------------
 
-function createApp({ db, adminPassword, publicDir }) {
+function createApp({ db, adminPassword, publicDir, seedDemo = true }) {
+  // Schema + demo content are set up lazily on the first request, which also
+  // works for serverless cold starts. A failed attempt is retried next time.
+  let ready = null;
+  const ensureReady = () => (ready ??= (async () => {
+    await db.migrate();
+    if (seedDemo && (await seed(db))) console.log('Demo-Inhalte angelegt.');
+  })().catch((err) => { ready = null; throw err; }));
+
   const routes = [];
   const route = (method, pattern, handler, { admin = false } = {}) => {
     const keys = [];
@@ -95,8 +107,16 @@ function createApp({ db, adminPassword, publicDir }) {
 
   // ---- Events (trainings + King/Queen Sundays) ----
 
-  const eventRow = (e) => {
-    const regs = db.prepare('SELECT name, category FROM registrations WHERE event_id = ? ORDER BY id').all(e.id);
+  // Adds capacity info to events. One query for all registrations keeps
+  // round trips to the (remote) database low.
+  const withRegistrations = async (events) => {
+    if (!events.length) return [];
+    const ids = events.map((e) => e.id);
+    const regs = await db.all(`SELECT event_id, name, category FROM registrations WHERE event_id IN (${ids.map(() => '?').join(',')}) ORDER BY id`, ...ids);
+    return events.map((e) => eventRow(e, regs.filter((r) => r.event_id === e.id)));
+  };
+
+  const eventRow = (e, regs) => {
     const confirmed = regs.slice(0, e.capacity);
     return {
       ...e,
@@ -108,13 +128,15 @@ function createApp({ db, adminPassword, publicDir }) {
     };
   };
 
-  const getEvent = (id) => {
-    const e = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+  const getEvent = async (id) => {
+    const e = await db.get('SELECT * FROM events WHERE id = ?', id);
     if (!e) throw new HttpError(404, 'Termin nicht gefunden.');
     return e;
   };
 
-  route('GET', '/api/events', ({ query }) => {
+  const eventWithRegistrations = async (id) => (await withRegistrations([await getEvent(id)]))[0];
+
+  route('GET', '/api/events', async ({ query }) => {
     const where = [];
     const args = [];
     if (query.type) { where.push('type = ?'); args.push(query.type); }
@@ -123,13 +145,13 @@ function createApp({ db, adminPassword, publicDir }) {
     const order = query.when === 'past' ? 'DESC' : 'ASC';
     const limit = Math.min(Number(query.limit) || 100, 200);
     const sql = `SELECT * FROM events ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY starts_at ${order} LIMIT ${limit}`;
-    return db.prepare(sql).all(...args).map(eventRow);
+    return withRegistrations(await db.all(sql, ...args));
   });
 
-  route('GET', '/api/events/:id', ({ params }) => eventRow(getEvent(params.id)));
+  route('GET', '/api/events/:id', async ({ params }) => eventWithRegistrations(params.id));
 
-  route('POST', '/api/events/:id/register', ({ params, body }) => {
-    const e = getEvent(params.id);
+  route('POST', '/api/events/:id/register', async ({ params, body }) => {
+    const e = await getEvent(params.id);
     if (e.starts_at < nowLocalIso()) throw new HttpError(400, 'Dieser Termin liegt in der Vergangenheit.');
     const name = str(body.name, 'Name', { max: 60 });
     const mail = email(body.email);
@@ -141,44 +163,45 @@ function createApp({ db, adminPassword, publicDir }) {
     }
     const code = crypto.randomBytes(6).toString('hex');
     try {
-      db.prepare('INSERT INTO registrations (event_id, name, email, category, note, cancel_code) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(e.id, name, mail, category, note, code);
+      await db.run('INSERT INTO registrations (event_id, name, email, category, note, cancel_code) VALUES (?, ?, ?, ?, ?, ?)',
+        e.id, name, mail, category, note, code);
     } catch (err) {
       if (String(err.message).includes('UNIQUE')) throw new HttpError(409, 'Mit dieser E-Mail bist du für diesen Termin schon angemeldet.');
       throw err;
     }
-    const position = db.prepare('SELECT COUNT(*) AS n FROM registrations WHERE event_id = ? AND id <= (SELECT id FROM registrations WHERE cancel_code = ?)').get(e.id, code).n;
-    return { status: 201, body: { ok: true, cancelCode: code, waitlist: position > e.capacity, event: eventRow(e) } };
+    const { n: position } = await db.get('SELECT COUNT(*) AS n FROM registrations WHERE event_id = ? AND id <= (SELECT id FROM registrations WHERE cancel_code = ?)', e.id, code);
+    return { status: 201, body: { ok: true, cancelCode: code, waitlist: position > e.capacity, event: await eventWithRegistrations(e.id) } };
   });
 
-  route('POST', '/api/registrations/cancel', ({ body }) => {
+  route('POST', '/api/registrations/cancel', async ({ body }) => {
     const code = str(body.code, 'Stornocode', { max: 32 }).toLowerCase();
-    const r = db.prepare('SELECT * FROM registrations WHERE cancel_code = ?').get(code);
+    const r = await db.get('SELECT * FROM registrations WHERE cancel_code = ?', code);
     if (!r) throw new HttpError(404, 'Kein Eintrag mit diesem Stornocode gefunden.');
-    db.prepare('DELETE FROM registrations WHERE id = ?').run(r.id);
-    return { ok: true, event: eventRow(getEvent(r.event_id)) };
+    await db.run('DELETE FROM registrations WHERE id = ?', r.id);
+    return { ok: true, event: await eventWithRegistrations(r.event_id) };
   });
 
   // ---- King/Queen of the Week: results + leaderboard ----
 
-  route('GET', '/api/kotw/results', ({ query }) => {
+  route('GET', '/api/kotw/results', async ({ query }) => {
     const limit = Math.min(Number(query.limit) || 20, 100);
-    const events = db.prepare(`SELECT e.id, e.title, e.starts_at, e.location FROM events e
+    const events = await db.all(`SELECT e.id, e.title, e.starts_at, e.location FROM events e
                                WHERE e.type = 'kotw' AND EXISTS (SELECT 1 FROM results r WHERE r.event_id = e.id)
-                               ORDER BY e.starts_at DESC LIMIT ?`).all(limit);
-    const res = db.prepare('SELECT category, player, placement FROM results WHERE event_id = ? ORDER BY placement');
+                               ORDER BY e.starts_at DESC LIMIT ?`, limit);
+    if (!events.length) return [];
+    const ids = events.map((e) => e.id);
+    const all = await db.all(`SELECT event_id, category, player, placement FROM results WHERE event_id IN (${ids.map(() => '?').join(',')}) ORDER BY placement`, ...ids);
     return events.map((e) => {
-      const rows = res.all(e.id).map((r) => ({ ...r, points: pointsFor(r.placement) }));
+      const rows = all.filter((r) => r.event_id === e.id).map(({ event_id, ...r }) => ({ ...r, points: pointsFor(r.placement) }));
       return { ...e, king: rows.filter((r) => r.category === 'king'), queen: rows.filter((r) => r.category === 'queen') };
     });
   });
 
-  route('GET', '/api/leaderboard', ({ query }) => {
-    const seasons = db.prepare(`SELECT DISTINCT substr(e.starts_at, 1, 4) AS y FROM results r JOIN events e ON e.id = r.event_id ORDER BY y DESC`)
-      .all().map((r) => r.y);
+  route('GET', '/api/leaderboard', async ({ query }) => {
+    const seasons = (await db.all(`SELECT DISTINCT substr(e.starts_at, 1, 4) AS y FROM results r JOIN events e ON e.id = r.event_id ORDER BY y DESC`)).map((r) => r.y);
     const season = /^\d{4}$/.test(query.season || '') ? query.season : seasons[0] || String(new Date().getFullYear());
-    const rows = db.prepare(`SELECT r.category, r.player, r.placement, e.starts_at FROM results r JOIN events e ON e.id = r.event_id
-                             WHERE substr(e.starts_at, 1, 4) = ? ORDER BY e.starts_at`).all(season);
+    const rows = await db.all(`SELECT r.category, r.player, r.placement, e.starts_at FROM results r JOIN events e ON e.id = r.event_id
+                             WHERE substr(e.starts_at, 1, 4) = ? ORDER BY e.starts_at`, season);
     const table = (category) => {
       const by = new Map();
       for (const r of rows.filter((x) => x.category === category)) {
@@ -208,30 +231,29 @@ function createApp({ db, adminPassword, publicDir }) {
 
   // ---- Tournaments, posts, contact ----
 
-  route('GET', '/api/tournaments', () => db.prepare('SELECT * FROM tournaments ORDER BY starts_on').all());
+  route('GET', '/api/tournaments', async () => await db.all('SELECT * FROM tournaments ORDER BY starts_on'));
 
-  route('GET', '/api/posts', ({ query }) => {
+  route('GET', '/api/posts', async ({ query }) => {
     const limit = Math.min(Number(query.limit) || 50, 100);
-    return db.prepare('SELECT id, title, excerpt, tag, published_at FROM posts ORDER BY published_at DESC LIMIT ?').all(limit);
+    return await db.all('SELECT id, title, excerpt, tag, published_at FROM posts ORDER BY published_at DESC LIMIT ?', limit);
   });
 
-  route('GET', '/api/posts/:id', ({ params }) => {
-    const p = db.prepare('SELECT * FROM posts WHERE id = ?').get(params.id);
+  route('GET', '/api/posts/:id', async ({ params }) => {
+    const p = await db.get('SELECT * FROM posts WHERE id = ?', params.id);
     if (!p) throw new HttpError(404, 'Beitrag nicht gefunden.');
     return p;
   });
 
-  route('POST', '/api/messages', ({ body }) => {
+  route('POST', '/api/messages', async ({ body }) => {
     if (body.website) return { status: 201, body: { ok: true } }; // honeypot
-    db.prepare('INSERT INTO messages (name, email, subject, message) VALUES (?, ?, ?, ?)').run(
-      str(body.name, 'Name', { max: 80 }), email(body.email),
+    await db.run('INSERT INTO messages (name, email, subject, message) VALUES (?, ?, ?, ?)', str(body.name, 'Name', { max: 80 }), email(body.email),
       str(body.subject, 'Betreff', { max: 150, required: false }), str(body.message, 'Nachricht', { max: 4000 }));
     return { status: 201, body: { ok: true } };
   });
 
   // ---- Admin ----
 
-  route('GET', '/api/admin/check', () => ({ ok: true }), { admin: true });
+  route('GET', '/api/admin/check', async () => ({ ok: true }), { admin: true });
 
   const eventFields = (b) => {
     if (b.type !== 'training' && b.type !== 'kotw') throw new HttpError(400, 'Typ muss "training" oder "kotw" sein.');
@@ -240,52 +262,56 @@ function createApp({ db, adminPassword, publicDir }) {
       str(b.description, 'Beschreibung', { max: 2000, required: false })];
   };
 
-  route('POST', '/api/admin/events', ({ body }) => {
+  route('POST', '/api/admin/events', async ({ body }) => {
     const repeat = int(body.repeat_weeks ?? 1, 'Wiederholungen', { min: 1, max: 26 });
     const f = eventFields(body);
-    const ins = db.prepare('INSERT INTO events (type, title, starts_at, duration, location, level, capacity, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    const ids = [];
+    const sql = 'INSERT INTO events (type, title, starts_at, duration, location, level, capacity, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+    const stmts = [];
     for (let w = 0; w < repeat; w++) {
       const d = new Date(f[2] + ':00Z');
       d.setUTCDate(d.getUTCDate() + 7 * w);
-      ids.push(Number(ins.run(f[0], f[1], d.toISOString().slice(0, 16), ...f.slice(3)).lastInsertRowid));
+      stmts.push([sql, [f[0], f[1], d.toISOString().slice(0, 16), ...f.slice(3)]]);
     }
+    const ids = (await db.batch(stmts)).map((r) => Number(r.lastInsertRowid));
     return { status: 201, body: { ok: true, ids } };
   }, { admin: true });
 
-  route('PUT', '/api/admin/events/:id', ({ params, body }) => {
-    getEvent(params.id);
-    db.prepare('UPDATE events SET type=?, title=?, starts_at=?, duration=?, location=?, level=?, capacity=?, description=? WHERE id=?')
-      .run(...eventFields(body), params.id);
+  route('PUT', '/api/admin/events/:id', async ({ params, body }) => {
+    await getEvent(params.id);
+    await db.run('UPDATE events SET type=?, title=?, starts_at=?, duration=?, location=?, level=?, capacity=?, description=? WHERE id=?', ...eventFields(body), params.id);
     return { ok: true };
   }, { admin: true });
 
-  route('DELETE', '/api/admin/events/:id', ({ params }) => {
-    getEvent(params.id);
-    db.prepare('DELETE FROM events WHERE id = ?').run(params.id);
+  route('DELETE', '/api/admin/events/:id', async ({ params }) => {
+    await getEvent(params.id);
+    await db.batch([
+      ['DELETE FROM registrations WHERE event_id = ?', [params.id]],
+      ['DELETE FROM results WHERE event_id = ?', [params.id]],
+      ['DELETE FROM events WHERE id = ?', [params.id]],
+    ]);
     return { ok: true };
   }, { admin: true });
 
-  route('GET', '/api/admin/events/:id/registrations', ({ params }) => {
-    const e = getEvent(params.id);
-    return db.prepare('SELECT id, name, email, category, note, created_at FROM registrations WHERE event_id = ? ORDER BY id').all(e.id)
+  route('GET', '/api/admin/events/:id/registrations', async ({ params }) => {
+    const e = await getEvent(params.id);
+    return await db.all('SELECT id, name, email, category, note, created_at FROM registrations WHERE event_id = ? ORDER BY id', e.id)
       .map((r, i) => ({ ...r, waitlist: i >= e.capacity }));
   }, { admin: true });
 
-  route('DELETE', '/api/admin/registrations/:id', ({ params }) => {
-    db.prepare('DELETE FROM registrations WHERE id = ?').run(params.id);
+  route('DELETE', '/api/admin/registrations/:id', async ({ params }) => {
+    await db.run('DELETE FROM registrations WHERE id = ?', params.id);
     return { ok: true };
   }, { admin: true });
 
-  route('GET', '/api/admin/events/:id/results', ({ params }) => {
-    getEvent(params.id);
-    const rows = db.prepare('SELECT category, player FROM results WHERE event_id = ? ORDER BY placement').all(params.id);
+  route('GET', '/api/admin/events/:id/results', async ({ params }) => {
+    await getEvent(params.id);
+    const rows = await db.all('SELECT category, player FROM results WHERE event_id = ? ORDER BY placement', params.id);
     return { king: rows.filter((r) => r.category === 'king').map((r) => r.player), queen: rows.filter((r) => r.category === 'queen').map((r) => r.player) };
   }, { admin: true });
 
   // Body: { king: ["1st", "2nd", ...], queen: [...] } — order defines placement.
-  route('PUT', '/api/admin/events/:id/results', ({ params, body }) => {
-    const e = getEvent(params.id);
+  route('PUT', '/api/admin/events/:id/results', async ({ params, body }) => {
+    const e = await getEvent(params.id);
     if (e.type !== 'kotw') throw new HttpError(400, 'Ergebnisse gibt es nur für King/Queen-Termine.');
     const clean = (list, label) => {
       if (!Array.isArray(list)) return [];
@@ -300,60 +326,55 @@ function createApp({ db, adminPassword, publicDir }) {
     };
     const king = clean(body.king, 'King');
     const queen = clean(body.queen, 'Queen');
-    const ins = db.prepare('INSERT INTO results (event_id, category, player, placement) VALUES (?, ?, ?, ?)');
-    db.exec('BEGIN');
-    try {
-      db.prepare('DELETE FROM results WHERE event_id = ?').run(e.id);
-      king.forEach((n, i) => ins.run(e.id, 'king', n, i + 1));
-      queen.forEach((n, i) => ins.run(e.id, 'queen', n, i + 1));
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
+    const ins = 'INSERT INTO results (event_id, category, player, placement) VALUES (?, ?, ?, ?)';
+    await db.batch([
+      ['DELETE FROM results WHERE event_id = ?', [e.id]],
+      ...king.map((n, i) => [ins, [e.id, 'king', n, i + 1]]),
+      ...queen.map((n, i) => [ins, [e.id, 'queen', n, i + 1]]),
+    ]);
     return { ok: true };
   }, { admin: true });
 
   const tournamentFields = (b) => [str(b.name, 'Name', { max: 150 }), date(b.starts_on, 'Datum'), date(b.ends_on, 'Enddatum', false),
     str(b.location, 'Ort', { max: 200 }), str(b.description, 'Beschreibung', { max: 3000, required: false }), url(b.link)];
 
-  route('POST', '/api/admin/tournaments', ({ body }) => {
-    const r = db.prepare('INSERT INTO tournaments (name, starts_on, ends_on, location, description, link) VALUES (?, ?, ?, ?, ?, ?)').run(...tournamentFields(body));
+  route('POST', '/api/admin/tournaments', async ({ body }) => {
+    const r = await db.run('INSERT INTO tournaments (name, starts_on, ends_on, location, description, link) VALUES (?, ?, ?, ?, ?, ?)', ...tournamentFields(body));
     return { status: 201, body: { ok: true, id: Number(r.lastInsertRowid) } };
   }, { admin: true });
 
-  route('PUT', '/api/admin/tournaments/:id', ({ params, body }) => {
-    db.prepare('UPDATE tournaments SET name=?, starts_on=?, ends_on=?, location=?, description=?, link=? WHERE id=?').run(...tournamentFields(body), params.id);
+  route('PUT', '/api/admin/tournaments/:id', async ({ params, body }) => {
+    await db.run('UPDATE tournaments SET name=?, starts_on=?, ends_on=?, location=?, description=?, link=? WHERE id=?', ...tournamentFields(body), params.id);
     return { ok: true };
   }, { admin: true });
 
-  route('DELETE', '/api/admin/tournaments/:id', ({ params }) => {
-    db.prepare('DELETE FROM tournaments WHERE id = ?').run(params.id);
+  route('DELETE', '/api/admin/tournaments/:id', async ({ params }) => {
+    await db.run('DELETE FROM tournaments WHERE id = ?', params.id);
     return { ok: true };
   }, { admin: true });
 
   const postFields = (b) => [str(b.title, 'Titel', { max: 150 }), str(b.excerpt, 'Kurzbeschreibung', { max: 300, required: false }),
     str(b.body, 'Text', { max: 20000 }), str(b.tag || 'News', 'Kategorie', { max: 40 })];
 
-  route('POST', '/api/admin/posts', ({ body }) => {
-    const r = db.prepare('INSERT INTO posts (title, excerpt, body, tag) VALUES (?, ?, ?, ?)').run(...postFields(body));
+  route('POST', '/api/admin/posts', async ({ body }) => {
+    const r = await db.run('INSERT INTO posts (title, excerpt, body, tag) VALUES (?, ?, ?, ?)', ...postFields(body));
     return { status: 201, body: { ok: true, id: Number(r.lastInsertRowid) } };
   }, { admin: true });
 
-  route('PUT', '/api/admin/posts/:id', ({ params, body }) => {
-    db.prepare('UPDATE posts SET title=?, excerpt=?, body=?, tag=? WHERE id=?').run(...postFields(body), params.id);
+  route('PUT', '/api/admin/posts/:id', async ({ params, body }) => {
+    await db.run('UPDATE posts SET title=?, excerpt=?, body=?, tag=? WHERE id=?', ...postFields(body), params.id);
     return { ok: true };
   }, { admin: true });
 
-  route('DELETE', '/api/admin/posts/:id', ({ params }) => {
-    db.prepare('DELETE FROM posts WHERE id = ?').run(params.id);
+  route('DELETE', '/api/admin/posts/:id', async ({ params }) => {
+    await db.run('DELETE FROM posts WHERE id = ?', params.id);
     return { ok: true };
   }, { admin: true });
 
-  route('GET', '/api/admin/messages', () => db.prepare('SELECT * FROM messages ORDER BY created_at DESC, id DESC').all(), { admin: true });
+  route('GET', '/api/admin/messages', async () => await db.all('SELECT * FROM messages ORDER BY created_at DESC, id DESC'), { admin: true });
 
-  route('DELETE', '/api/admin/messages/:id', ({ params }) => {
-    db.prepare('DELETE FROM messages WHERE id = ?').run(params.id);
+  route('DELETE', '/api/admin/messages/:id', async ({ params }) => {
+    await db.run('DELETE FROM messages WHERE id = ?', params.id);
     return { ok: true };
   }, { admin: true });
 
@@ -366,6 +387,13 @@ function createApp({ db, adminPassword, publicDir }) {
   };
 
   const readBody = (req) => new Promise((resolve, reject) => {
+    // On Vercel the runtime has already parsed the body.
+    if (req.body !== undefined) {
+      if (typeof req.body === 'string') {
+        try { return resolve(req.body ? JSON.parse(req.body) : {}); } catch { return reject(new HttpError(400, 'Ungültiges JSON.')); }
+      }
+      return resolve(Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString('utf8') || '{}') : req.body || {});
+    }
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
@@ -408,13 +436,14 @@ function createApp({ db, adminPassword, publicDir }) {
       return serveStatic(req, res, u.pathname);
     }
     try {
+      await ensureReady();
       const r = routes.find((x) => x.method === req.method && x.re.test(u.pathname));
       if (!r) throw new HttpError(404, 'Unbekannter Endpunkt.');
       if (r.admin && !isAdmin(req)) throw new HttpError(401, 'Admin-Passwort falsch oder fehlt.');
       const m = u.pathname.match(r.re);
       const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
       const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
-      const out = r.handler({ params, query: Object.fromEntries(u.searchParams), body: body && typeof body === 'object' ? body : {}, req });
+      const out = await r.handler({ params, query: Object.fromEntries(u.searchParams), body: body && typeof body === 'object' ? body : {}, req });
       if (out && out.status && out.body) return send(res, out.status, out.body);
       return send(res, 200, out);
     } catch (err) {

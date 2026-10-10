@@ -10,23 +10,59 @@ Vereins-Web-App für FTV Vienna:
 - **Admin-Bereich** (`/admin`) – Termine anlegen (auch wöchentlich wiederholend), Teilnehmerlisten mit E-Mails,
   Sonntags-Ergebnisse eintragen, Turniere, Blogbeiträge, Nachrichten aus dem Kontaktformular
 
-## Starten
+## Live stellen: Vercel + Turso (gratis)
 
-Voraussetzung: Node.js ≥ 22.5 (nutzt das eingebaute `node:sqlite`, keine weiteren Abhängigkeiten).
+Die Seiten liegen statisch in `public/`, die API läuft als Vercel-Funktion (`api/index.js`),
+die Daten (Anmeldungen, Rangliste, Blog …) liegen in einer **Turso**-Datenbank (gehostetes SQLite).
+
+### 1. Turso-Datenbank anlegen
+1. Auf [turso.tech](https://turso.tech) mit GitHub anmelden (Free-Plan).
+2. Im Dashboard **Create Database** → Name z. B. `ftv-vienna`, Region **Frankfurt** (nahe Wien).
+3. In der Datenbank:
+   - die **URL** kopieren (beginnt mit `libsql://…`)
+   - **Create Token** (Lesen & Schreiben) → Token kopieren
+
+   Tabellen musst du keine anlegen – das passiert automatisch beim ersten Aufruf.
+
+### 2. Projekt auf Vercel importieren
+1. Auf [vercel.com](https://vercel.com) mit GitHub anmelden (Hobby-Plan).
+2. **Add New → Project** → Repository `FTV-Vienna` importieren.
+3. Framework Preset: **Other** – Build-Einstellungen nicht ändern (kommen aus `vercel.json`).
+4. Unter **Environment Variables** eintragen:
+
+   | Name                  | Wert                                   |
+   |-----------------------|----------------------------------------|
+   | `TURSO_DATABASE_URL`  | die `libsql://…`-URL aus Schritt 1     |
+   | `TURSO_AUTH_TOKEN`    | der Token aus Schritt 1                |
+   | `ADMIN_PASSWORD`      | ein eigenes, sicheres Passwort         |
+   | `SEED` (optional)     | `0`, wenn **keine** Demo-Inhalte angelegt werden sollen |
+
+5. **Deploy** – fertig. Die Seite ist unter `https://<projekt>.vercel.app` erreichbar.
+   Jeder Push auf den Hauptbranch geht automatisch live.
+
+Eigene Domain (z. B. `ftv-vienna.at`): in Vercel unter **Settings → Domains** hinzufügen und
+die angezeigten DNS-Einträge beim Domain-Anbieter setzen.
+
+## Lokal starten
+
+Voraussetzung: Node.js 22.
 
 ```bash
-ADMIN_PASSWORD='dein-sicheres-passwort' npm start
-# → http://localhost:3000
+npm install
+ADMIN_PASSWORD='geheim' npm start     # → http://localhost:3000
+npm test
 ```
 
-| Variable         | Standard                 | Bedeutung                                       |
-|------------------|--------------------------|-------------------------------------------------|
-| `PORT`           | `3000`                   | HTTP-Port                                       |
-| `ADMIN_PASSWORD` | `ftv-admin`              | Passwort für `/admin` – **unbedingt setzen!**   |
-| `DB_FILE`        | `data/ftv-vienna.db`     | SQLite-Datei (regelmäßig sichern)               |
-| `SEED`           | `1`                      | `0` = keine Demo-Inhalte in leere DB einfügen   |
+Ohne `TURSO_DATABASE_URL` nutzt die App lokal die Datei `data/ftv-vienna.db` – kein Account nötig.
+Mit gesetzter `TURSO_DATABASE_URL` (+ `TURSO_AUTH_TOKEN`) arbeitet auch der lokale Server direkt auf der Live-Datenbank.
 
-Tests: `npm test`
+| Variable             | Standard               | Bedeutung                                         |
+|----------------------|------------------------|---------------------------------------------------|
+| `TURSO_DATABASE_URL` | lokale Datei           | `libsql://…` (Turso) oder `file:pfad/zur.db`      |
+| `TURSO_AUTH_TOKEN`   | –                      | Token für Turso                                   |
+| `ADMIN_PASSWORD`     | `ftv-admin` (nur lokal)| Passwort für `/admin` – auf Vercel Pflicht        |
+| `SEED`               | `1`                    | `0` = keine Demo-Inhalte in leere DB einfügen     |
+| `PORT`               | `3000`                 | nur lokaler Server                                |
 
 ## Inhalte anpassen
 
@@ -42,8 +78,3 @@ Online gefunden (Footvolley Austria / Eversports-Profil): Footvolley Austria fö
 Graz, in Wien betreut vom Landesverband Footvolley Wien; Links zu footvolleyaustria.at, Facebook und Instagram
 (@friendsoffootvolley). Ein eigener Instagram-Account, eine E-Mail-Adresse, der Trainingsort und die
 Trainingszeiten von FTV Vienna waren **nicht** auffindbar – bitte in `public/js/config.js` bzw. im Admin-Bereich ergänzen.
-
-## Hosting
-
-Läuft überall, wo ein dauerhafter Node-Prozess mit beschreibbarem Speicher möglich ist (z. B. ein kleiner VPS,
-Railway, Fly.io mit Volume, Render mit Disk). Die SQLite-Datei muss auf einem persistenten Laufwerk liegen.
